@@ -2,7 +2,8 @@ VENV = .Avito_venv
 PYTHON = $(VENV)/bin/python
 PIP = $(VENV)/bin/pip
 
-SCRIPT = Avito_views_daily.py
+SCRIPT_1 = Avito_views_daily.py
+SCRIPT_2 = Avito_all_ad_info.py
 
 setup:
 	python3 -m venv $(VENV)
@@ -15,9 +16,17 @@ google:
       --user-data-dir="$$HOME/chrome-remote-profile" \
 	  > /dev/null 2>&1 & disown
 
-run:
-	$(PYTHON) $(SCRIPT)
+run_1:
+	$(PYTHON) $(SCRIPT_1)
 
-all:
+run_2:
+	$(PYTHON) $(SCRIPT_2)
+
+all_views:
 	make setup
-	(make google &) && make run
+	make google
+	make run_1
+
+all_data:
+	make setup
+	(make google &) && make run_2
