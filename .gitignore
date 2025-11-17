@@ -2,3 +2,4 @@ __pycache__/
 .Avito_venv/
 .vscode/
 *.json
+.DS_Store
