@@ -1,12 +1,12 @@
 urls = [
-    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_iz_myacha_7370328216", #1 not
+    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_iz_myacha_7370328216", #1 
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_iz_myacha_7530761365", #2 
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_iz_myacha_3659478686", #3
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_4074865306", #4 
-    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7658618958", #5 not
-    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7658158514", #6 not
-    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7690234486", #7 not
-    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7690822059", #8 not
+    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7658618958", #5 
+    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7658158514", #6 
+    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7690234486", #7 
+    "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_myach_7690822059", #8 
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_7690142906", #9
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_7690514152", #10
     "https://www.avito.ru/moskva/odezhda_obuv_aksessuary/sumka_krossbodi_7690063473", #11

@@ -3,123 +3,218 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from oauth2client.service_account import ServiceAccountCredentials
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
+from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 from datetime import datetime
 import random
 import time
 
+# --- импортируем список ссылок ---
 from urls import urls
 
-
-today = datetime.today()
-weekday = today.weekday()
-
+# --- подключаем Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("avito-python-8b6e211890cd.json", scope)
 client = gspread.authorize(creds)
+sheet = client.open("анализ Авито").worksheet("bot_pars")
 
-sheet = client.open("анализ Авито").worksheet("bot_pars")  # имя твоей таблицы
-
+# --- настройка Selenium ---
 options = Options()
 options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-
+options.page_load_strategy = "none"
 driver = webdriver.Chrome(options=options)
 driver.get("https://www.avito.ru/")
 print("✅ Подключено к открытому Chrome!")
 
+# --- вспомогательная функция: считывание hover и контактов ---
 def get_stats(ad_url):
     try:
         driver.get(ad_url)
-        time.sleep(random.uniform(0, 2))
+        time.sleep(random.uniform(0.5, 1.5))
 
+        # контакты
         elements = driver.find_elements(By.CLASS_NAME, "styles-module-size_m-Z4wLz")
-        hover_elements = driver.find_elements(By.CLASS_NAME, "styles-root-HkN9I")
-
-        contacts = 0
-        infos = []
-
+        contacts = None
         if len(elements) >= 4:
             text = elements[3].text.strip()
             if text.isdigit():
                 contacts = int(text)
 
-        for el in hover_elements:
-            ActionChains(driver).move_to_element(el).perform()
-            
+        # hover-элементы
+        hover_elements = driver.find_elements(By.CLASS_NAME, "styles-root-HkN9I")
+        week_infos = [None]*7
+        for idx, el in enumerate(hover_elements):
+            if idx >= 7:
+                break
             try:
+                ActionChains(driver).move_to_element(el).perform()
                 tooltip = WebDriverWait(driver, 1, poll_frequency=0.2).until(
                     EC.visibility_of_element_located((By.CLASS_NAME, "styles-tooltip-Encbf"))
                 )
-                info = tooltip.text.strip()
-                info = info.split(" ", 1)[0]
-                infos.append(info)
-            
+                info = tooltip.text.strip().split(" ", 1)[0]
+                week_infos[idx] = info
             except TimeoutException:
-                infos.append(None)
                 continue
 
-        return infos, contacts
-
+        return week_infos, contacts
     except Exception as e:
-        print(f"Ошибка при обработке {ad_url}: {e}")
-        return [], ''
+        #print(f"⚠️ Ошибка при обработке {ad_url}: {e}")
+        return [None]*7, None
 
-start_row_count = len(sheet.get_all_values())
+# --- Определяем названия колонок ---
+all_values = sheet.get_all_values()
+if not all_values:
+    raise SystemExit("Лист bot_pars пуст или недоступен")
+headers = all_values[0]
+link_col = headers.index("Ссылка")
+contact_col = headers.index("контакты")
+day_cols = [headers.index(d) for d in ["пн","вт","ср","чт","пт","сб","вс"]]
 
-if weekday != 0:
-    num_rows_to_delete = len(urls)
+# --- Создаём словарь ссылка -> строка ---
+data = all_values[1:]
+link_to_row = {row[link_col]: i+2 for i,row in enumerate(data) if len(row)>link_col and row[link_col]}
 
-    if num_rows_to_delete > 0:
-        total_rows = len(sheet.get_all_values())
-        start_row = total_rows - num_rows_to_delete + 1
-        end_row = total_rows
-        sheet.delete_rows(start_row, end_row)
+# --- вспомогательные функции ---
+def same_iso_week(d1, d2):
+    return d1.isocalendar()[:2] == d2.isocalendar()[:2]
 
-counter = 0
-for ad in urls:
-    counter+=1
-    infos, contacts = get_stats(ad)
-    today = datetime.today().strftime("%d.%m.%Y")
+def create_new_week_block(today_date):
+    """Создаёт новый блок строк для urls с текущей датой, нумерация с 1"""
+    next_row = len(sheet.get_all_values()) + 1  # вставляем в конец
+    # идём по urls в обратном порядке
+    for idx, url in reversed(list(enumerate(urls, 1))):
+        row_data = [str(idx), today_date, url] + [""]*7 + [""]
+        sheet.insert_row(row_data, next_row)
 
-    sheet.append_row([counter, today, ad] + infos + [contacts])
-    print(f"{counter} объявлениe завершено ✅")
 
-print("✅ Данные успешно выгружены в Google Sheets!")
+# --- Определяем дату последнего блока ---
+last_block_date = None
+if data:
+    # берём дату последнего обновления
+    for row in reversed(data):
+        if len(row) > 1 and row[1]:
+            try:
+                last_block_date = datetime.strptime(row[1], "%d.%m.%Y")
+                break
+            except:
+                continue
 
-end_row_count = len(sheet.get_all_values())
+today = datetime.today()
+today_date = today.strftime("%d.%m.%Y")
 
-spreadsheet = client.open("анализ Авито")
+# --- Если последняя дата не текущей недели — создаём новые строки ---
+if not last_block_date or not same_iso_week(today, last_block_date):
+    print("🆕 Создаём новый блок недельных строк в bot_pars")
+    create_new_week_block(today_date)
+    # Обновляем словарь ссылок на новые строки
+    all_values = sheet.get_all_values()
+    data = all_values[1:]
+    link_to_row = {row[link_col]: i+2 for i,row in enumerate(data) if len(row)>link_col and row[link_col]}
 
-target_sheet = spreadsheet.worksheet("переверн")
+# --- Основной цикл: обновляем строки текущей недели ---
+k=0
+for ad_url in urls:
+    k+=1
+    if ad_url not in link_to_row:
+        print(f"⏭ Пропускаем новое объявление (не найдено в текущем блоке): {ad_url}")
+        continue
 
-data = sheet.get_values(f"A{start_row_count + 1}:Z{end_row_count}")
+    row_num = link_to_row[ad_url]
+    week_infos, contacts = get_stats(ad_url)
+    current_row = sheet.row_values(row_num)
+    if len(current_row)<len(headers):
+        current_row += [""]*(len(headers)-len(current_row))
 
-transposed = list(map(list, zip(*data)))
+    updates = []
+    for i, col_idx in enumerate(day_cols):
+        new_val = week_infos[i]
+        old_val = current_row[col_idx]
+        if new_val is not None and str(new_val).strip()!="" and str(new_val)!=str(old_val):
+            cell = f"{chr(65+col_idx)}{row_num}"
+            updates.append({"range":cell,"values":[[str(new_val)]]})
+    if contacts is not None and str(contacts)!=str(current_row[contact_col]):
+        cell = f"{chr(65+contact_col)}{row_num}"
+        updates.append({"range":cell,"values":[[str(contacts)]]})
 
-columns_to_remove = [1, 2]
-filtered_transposed = [
-    row for i, row in enumerate(transposed) if i not in columns_to_remove
-]
+    if updates:
+        sheet.batch_update(updates)
+        print(f"✅ Обновлена строка {k} (записано {len(updates)} ячеек)")
+    else:
+        print(f"⏭ Для {k} нет новых значений")
 
-next_row = len(target_sheet.get_all_values()) + 1
+print("🎯 Обновление bot_pars завершено.")
 
-if weekday == 0:
-    target_sheet.update(f"A{next_row}", filtered_transposed)
+# --- Перенос в 'переверн' остаётся как раньше ---
+target_sheet = client.open("анализ Авито").worksheet("переверн")
 
+all_values = sheet.get_all_values()
+data = all_values[1:]
+# берём последние len(urls) строк
+block = data[-len(urls):] if len(data)>=len(urls) else data[:]
+
+indices_to_take = [0] + list(range(3,11))
+selected = []
+for row in block:
+    row_extended = row + [""]*max(0,max(indices_to_take)+1-len(row))
+    selected.append([row_extended[i] for i in indices_to_take])
+
+def to_int_if_possible(v):
+    try:
+        if v is None:
+            return v
+        s = str(v).strip()
+        if s=="": return ""
+        num = float(s.replace(",","."))
+        return int(round(num))
+    except:
+        return s
+
+selected_conv = [[to_int_if_possible(cell) for cell in r] for r in selected]
+transposed = list(map(list, zip(*selected_conv))) if selected_conv else []
+
+first_col = ["Дата","пн","вт","ср","чт","пт","сб","вс","контакты"]
+first_col[0] = today_date
+
+final_data = []
+while len(transposed)<len(first_col):
+    transposed.append([""]*len(block))
+for i in range(len(first_col)):
+    final_data.append([first_col[i]] + transposed[i])
+
+existing_target = target_sheet.get_all_values()
+
+# находим последнюю дату блока
+last_date = None
+for row in reversed(existing_target):
+    if row and row[0]:
+        try:
+            last_date = datetime.strptime(row[0],"%d.%m.%Y")
+            break
+        except:
+            continue
+
+def same_week(d1,d2):
+    return d1.isocalendar()[:2]==d2.isocalendar()[:2]
+
+if last_date and same_week(today,last_date):
+    start_row = None
+    for i,row in enumerate(existing_target):
+        if row and row[0]==last_date.strftime("%d.%m.%Y"):
+            start_row=i+1
+            break
+    if start_row is None:
+        next_row = len(existing_target)+1
+        target_sheet.update(range_name=f"A{next_row}", values=final_data)
+        print(f"✅ Добавлен блок в 'переверн', дата {today_date}")
+    else:
+        target_sheet.update(range_name=f"A{start_row}", values=final_data)
+        print(f"♻️ Обновлен существующий блок недели в 'переверн', дата {today_date}")
 else:
-    total_rows_target = len(target_sheet.get_all_values())
-    num_rows_to_delete = 9
-
-    if total_rows_target >= num_rows_to_delete:
-        start_row = total_rows_target - num_rows_to_delete + 1
-        end_row = total_rows_target
-        target_sheet.delete_rows(start_row, end_row)
-
-    next_row = len(target_sheet.get_all_values()) + 1
-    target_sheet.update(f"A{next_row}", filtered_transposed)
-    print("✅ Все сделано")
+    next_row = len(existing_target)+1
+    target_sheet.update(range_name=f"A{next_row}", values=final_data)
+    print(f"✅ Добавлен новый недельный блок в 'переверн', дата {today_date}")
 
 driver.quit()
+print("🚀 Скрипт завершён.")
