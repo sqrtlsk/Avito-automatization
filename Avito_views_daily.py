@@ -11,30 +11,25 @@ from datetime import datetime
 import random
 import time
 
-# --- импортируем список ссылок ---
 from urls import urls
 
-# --- подключаем Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("avito-python-8b6e211890cd.json", scope)
 client = gspread.authorize(creds)
 sheet = client.open("анализ Авито").worksheet("bot_pars")
 
-# --- настройка Selenium ---
 options = Options()
 options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 options.page_load_strategy = "none"
 driver = webdriver.Chrome(options=options)
 driver.get("https://www.avito.ru/")
-print("✅ Подключено к открытому Chrome!")
+print("✅ Подключено к Google Chrome")
 
-# --- вспомогательная функция: считывание hover и контактов ---
 def get_stats(ad_url):
     try:
         driver.get(ad_url)
         time.sleep(random.uniform(0.5, 1.5))
 
-        # контакты
         elements = driver.find_elements(By.CLASS_NAME, "styles-module-size_m-Z4wLz")
         contacts = None
         if len(elements) >= 4:
@@ -42,7 +37,6 @@ def get_stats(ad_url):
             if text.isdigit():
                 contacts = int(text)
 
-        # hover-элементы
         hover_elements = driver.find_elements(By.CLASS_NAME, "styles-root-HkN9I")
         week_infos = [None]*7
         for idx, el in enumerate(hover_elements):
@@ -60,10 +54,8 @@ def get_stats(ad_url):
 
         return week_infos, contacts
     except Exception as e:
-        #print(f"⚠️ Ошибка при обработке {ad_url}: {e}")
         return [None]*7, None
 
-# --- Определяем названия колонок ---
 all_values = sheet.get_all_values()
 if not all_values:
     raise SystemExit("Лист bot_pars пуст или недоступен")
@@ -72,27 +64,21 @@ link_col = headers.index("Ссылка")
 contact_col = headers.index("контакты")
 day_cols = [headers.index(d) for d in ["пн","вт","ср","чт","пт","сб","вс"]]
 
-# --- Создаём словарь ссылка -> строка ---
 data = all_values[1:]
 link_to_row = {row[link_col]: i+2 for i,row in enumerate(data) if len(row)>link_col and row[link_col]}
 
-# --- вспомогательные функции ---
 def same_iso_week(d1, d2):
     return d1.isocalendar()[:2] == d2.isocalendar()[:2]
 
 def create_new_week_block(today_date):
-    """Создаёт новый блок строк для urls с текущей датой, нумерация с 1"""
-    next_row = len(sheet.get_all_values()) + 1  # вставляем в конец
-    # идём по urls в обратном порядке
+    next_row = len(sheet.get_all_values()) + 1 
     for idx, url in reversed(list(enumerate(urls, 1))):
         row_data = [str(idx), today_date, url] + [""]*7 + [""]
         sheet.insert_row(row_data, next_row)
 
 
-# --- Определяем дату последнего блока ---
 last_block_date = None
 if data:
-    # берём дату последнего обновления
     for row in reversed(data):
         if len(row) > 1 and row[1]:
             try:
@@ -104,16 +90,13 @@ if data:
 today = datetime.today()
 today_date = today.strftime("%d.%m.%Y")
 
-# --- Если последняя дата не текущей недели — создаём новые строки ---
 if not last_block_date or not same_iso_week(today, last_block_date):
-    print("🆕 Создаём новый блок недельных строк в bot_pars")
+    print("Создан новый недельный блок")
     create_new_week_block(today_date)
-    # Обновляем словарь ссылок на новые строки
     all_values = sheet.get_all_values()
     data = all_values[1:]
     link_to_row = {row[link_col]: i+2 for i,row in enumerate(data) if len(row)>link_col and row[link_col]}
 
-# --- Основной цикл: обновляем строки текущей недели ---
 k=0
 for ad_url in urls:
     k+=1
@@ -140,18 +123,16 @@ for ad_url in urls:
 
     if updates:
         sheet.batch_update(updates)
-        print(f"✅ Обновлена строка {k} (записано {len(updates)} ячеек)")
+        print(f"✅ Обновлена строка {k} - записано {len(updates)} ячеек)")
     else:
         print(f"⏭ Для {k} нет новых значений")
 
-print("🎯 Обновление bot_pars завершено.")
+print("Обновление bot_pars завершено")
 
-# --- Перенос в 'переверн' остаётся как раньше ---
 target_sheet = client.open("анализ Авито").worksheet("переверн")
 
 all_values = sheet.get_all_values()
 data = all_values[1:]
-# берём последние len(urls) строк
 block = data[-len(urls):] if len(data)>=len(urls) else data[:]
 
 indices_to_take = [0] + list(range(3,11))
@@ -185,7 +166,6 @@ for i in range(len(first_col)):
 
 existing_target = target_sheet.get_all_values()
 
-# находим последнюю дату блока
 last_date = None
 for row in reversed(existing_target):
     if row and row[0]:
@@ -207,14 +187,13 @@ if last_date and same_week(today,last_date):
     if start_row is None:
         next_row = len(existing_target)+1
         target_sheet.update(range_name=f"A{next_row}", values=final_data)
-        print(f"✅ Добавлен блок в 'переверн', дата {today_date}")
+        print(f"Добавлен блок в 'переверн', дата {today_date}")
     else:
         target_sheet.update(range_name=f"A{start_row}", values=final_data)
-        print(f"♻️ Обновлен существующий блок недели в 'переверн', дата {today_date}")
+        print(f"Обновлен существующий блок недели в 'переверн', дата {today_date}")
 else:
     next_row = len(existing_target)+1
     target_sheet.update(range_name=f"A{next_row}", values=final_data)
-    print(f"✅ Добавлен новый недельный блок в 'переверн', дата {today_date}")
+    print(f"Добавлен новый недельный блок в 'переверн', дата {today_date}")
 
 driver.quit()
-print("🚀 Скрипт завершён.")

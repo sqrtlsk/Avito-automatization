@@ -10,29 +10,24 @@ import time
 
 from urls import urls
 
-# ---------- Настройка Google Sheets ----------
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("avito-python-01a1368c99e4.json", scope)
 client = gspread.authorize(creds)
 
-sheet = client.open("Avito_Python").worksheet("data")  # имя твоей таблицы
+sheet = client.open("Avito_Python").worksheet("data")
 
-# ---------- 
 options = Options()
 options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 
 driver = webdriver.Chrome(options=options)
 driver.get("https://www.avito.ru/")
-print("✅ Подключено к открытому Chrome!")
+print("✅ Подключено к Google Chrome")
 
-# ---------- 🔹 Функция для получения просмотров и контактов ----------
 def get_stats(ad_url):
     try:
-        # 1️⃣ — открываем страницу через selenium
         driver.get(ad_url)
         time.sleep(random.uniform(0, 4))
 
-        # 2️⃣ — вытаскиваем просмотры КОТОРЫЕ ЕЖЕНЕДЕЛЬНЫЕ
         elements = driver.find_elements(By.CLASS_NAME, "styles-module-size_m-Z4wLz")
         views = 0
         contacts = 0
@@ -86,16 +81,14 @@ def get_stats(ad_url):
         print(f"Ошибка при обработке {ad_url}: {e}")
         return 0, 0
 
-# ---------- 🔹 Основной цикл ----------
 counter = 0
 for ad in urls:
     counter+=1
     views, contacts, title, amount, price, describe = get_stats(ad)
     today = datetime.today().strftime("%d.%m.%Y")
 
-    # Добавляем строку в Google Sheets
     sheet.append_row([counter, today, ad, views, contacts, title, amount, price, describe])
-    print(f"{counter} объявлениe завершено ✅")
+    print(f"✅ Объявление {counter} выгружено")
 
-print("✅ Данные успешно выгружены в Google Sheets!")
+print("Выгрузка завершена")
 driver.quit()
